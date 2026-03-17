@@ -1,0 +1,327 @@
+# Functions and Calling Conventions
+Assembly language gives you the flexibility to implement functions manually using jumps, labels, and explicit stack operations. Understanding **functions** and **calling conventions** is crucial for writing maintainable and interoperable code.
+
+## What is a Function?
+A function is a **reusable block of code** that you define with a label and invoke with a special instruction to perform a specific task. 
+
+### How Function Calls Work
+
+- The `CALL` instruction pushes the return address onto the stack, then jumps to the function's code.
+- The function executes.
+- The `RET` instruction pops the return address and resumes execution in the caller.
+
+
+**Syntax:**
+```asm
+CALL MY_FUNCTION   ; Call MY_FUNCTION
+; ... execution resumes here after the function returns
+
+MY_FUNCTION:
+    ; Function code...
+    RET
+```
+
+**Example**
+```asm
+SECTION .DATA
+
+SECTION .TEXT
+GLOBAL _START
+
+_START:
+    CALL PRINT_HELLO      ; Call the function
+    ; Execution resumes here afterwards
+
+PRINT_HELLO:
+    ; For simplicity, just returning
+    RET
+```
+
+
+## Function Prologue and Epilogue
+A function must manage its environment using a **prologue** (setup) and **epilogue** (cleanup):
+
+### Prologue (Setup)
+- Saves the caller’s base pointer (EBP).
+- Save any registers that must be preserved.
+- Allocates space for local variables.
+
+### Epilogue (Cleanup)
+- Restores saved registers and stack pointer.
+- Returns control to the caller.
+
+
+**NASM syntax:**
+
+```asm
+MY_FUNC:
+    PUSH EBP         ; Save old base/frame pointer
+    MOV EBP, ESP     ; Establish new frame pointer
+    SUB  ESP, N      ; (optional) Allocate N bytes for local variables
+    ; ... function body ...
+
+    MOV ESP, EBP     ; Epilogue: restore stack pointer
+    POP EBP          ; Epilogue: restore frame pointer
+    RET
+```
+
+## Caller and Callee
+
+- **Caller**: Function or code that invokes another function.
+- **Callee**: Function being invoked.
+
+**Caller’s responsibilities**
+- Passing arguments (in registers or on the stack).
+- Preserving any **caller-saved** registers needed after the call.
+
+**Callee’s responsibilities**
+- Preserving any **callee-saved** registers it modifies.
+- Returning the result in the correct place.
+- Properly restore stack/registers before returning.
+
+
+## Stack and Function Calls
+
+The **stack** is a region of memory used to pass arguments, store return addresses, and hold local variables during function calls.
+
+### Stack Frame 
+A **stack frame** is the section of stack memory dedicated to a single function call. It holds:
+
+- Function arguments
+- Return address
+- Previous base pointer (`EBP`)
+- Local variables
+
+Each function call creates a new, isolated stack frame, allowing for recursion and nested functions.
+
+
+### Basic Stack Instructions
+Functions interact with the stack using:
+
+- `PUSH reg/value` : Decreases the stack pointer and stores a value on the stack.
+- `POP reg`        : Retrieves (pops) the last value from the stack into a register, increasing the stack pointer.
+- `CALL label`     : Pushes the return address and jumps to a label.
+- `RET`            : Pops the return address off the stack and jumps back.
+
+**Example**
+
+```asm
+PUSH EAX       ; Save EAX
+CALL MY_FUNC   ; Call function
+POP EAX        ; Restore EAX after return
+```
+
+
+
+## What is a Calling Convention?
+
+When you call a function, there are many things that must be agreed upon so things don't go wrong. A calling convention determines:
+
+- **How function arguments are passed:** via stack or registers, and in what order.
+- **How the return value is passed:** usually via a register.
+- **Who is responsible for cleaning up the stack:** the `caller` or the `callee`.
+- **Which registers must be preserved** (by the function or the caller).
+  
+This acts as a **contract** between the `caller` and the `callee`, **ensuring correct function calls**, especially when mixing languages or linking to external libraries.
+
+
+### Input-Process-Output Perspective
+
+From an **input-process-output** perspective, calling conventions define:
+
+- **Input:**  
+  How functions receive their inputs, how arguments are passed from `caller` to `callee` (via stack or registers, and in what order, etc.).
+- **Process:**  
+  How the function processes these inputs (accesses arguments, performs an action, allocates a stack frame, and manages the resources (stack, registers, stack frame).
+  - **When a function is called:**
+     1. The `caller` pushes arguments onto the stack (if not passed in registers).
+     2. The `call` instruction pushes the return address and jumps to the target address.
+     3. The `callee` executes to set up its stack frame.
+     4. On return, the stack frame is dismantled, and the return address is used to resume execution in the `caller`.
+- **Output:**  
+  How the function produces and returns outputs, and who is responsible for cleaning up the stack.
+
+This perspective clarifies the **contract** between `caller` and `callee`, focusing on the ***flow of data** and **resource management*** during a function call.
+
+
+## Common Calling Conventions
+
+### 1. `__cdecl` (C Declaration)
+#### Inputs
+- **All arguments** are pushed onto the stack by the `caller`, in **right-to-left** order.
+- `Callee` accesses arguments via its stack frame.
+
+#### Processing
+- `Callee` sets up its stack frame.
+- Retrieves arguments from the stack.
+- Performs the function’s logic.
+- `Callee` restores the stack frame.
+- `Caller` cleans up the stack after the function call.
+
+#### Outputs
+- **Return value**: Placed in `EAX`.
+- **Stack cleanup**: Performed by the `caller`.
+
+
+#### Example 
+The following code demonstrates how a simple function that **adds two numbers** is implemented and called using the` __cdecl` calling convention. 
+
+**Callee:**
+
+The `callee` retrieves both arguments from the stack, adds them, and returns the result in `EAX`.
+```asm
+ADD:
+    PUSH EBP
+    MOV EBP, ESP
+    MOV EAX, [EBP + 8] ; First parameter (a)
+    ADD EAX, [EBP + 12] ; Second parameter (b)
+    POP EBP
+    RET
+```
+**Caller:**
+
+The `caller` pushes the arguments in *right-to-left* order so the first argument is pushed last, calls the function, and then is responsible for cleaning up the stack after the call.
+```asm
+PUSH 3      ; B
+PUSH 2      ; A
+CALL ADD
+ADD ESP, 8  ; Caller cleans up stack (2 args x 4 bytes)
+```
+
+### 2. `__stdcall` (Standard Call)
+#### Inputs
+- **All arguments** are pushed onto the stack by the `caller`, in *right-to-left* order.
+- `Callee` accesses arguments from the stack frame.
+
+#### Processing
+- `Callee` sets up its stack frame.
+- Uses arguments from the stack, does its computation.
+- `Callee` cleans up the stack **before** returning.
+
+#### Outputs
+- **Return value**: Placed in `EAX`.
+- **Stack cleanup**: Performed by the `callee`.
+
+#### Example
+This example demonstrates how a function that **adds two numbers** is implemented and called using the `__stdcall` calling convention.
+
+**Callee:**
+
+The `callee` **`add@8`** expects two 4-byte parameters on the stack, adds them, returns the result in `EAX`, and cleans up the stack.
+```asm
+ADD@8:
+    PUSH EBP
+    MOV EBP, ESP
+    MOV EAX, [EBP + 8]
+    ADD EAX, [EBP + 12]
+    POP EBP
+    RET 8 ; Callee cleans up 8 bytes (2 params)
+```
+>[!important]
+>The number after the @ shows the **size (bytes) of arguments** passed to the function via the stack.<br>
+>- `ADD@8` **@8** suffix indicates the function expects 8 bytes of arguments on the stack.
+>- The `RET 8` instruction at the end of the function **removes 8 bytes from the stack before return**.
+
+**Caller:**
+
+The `caller` pushes the arguments in *right-to-left* order and calls the function. 
+```assembly
+PUSH 3
+PUSH 2
+CALL ADD@8  ; No need to set esp after call
+```
+
+### 3. `__fastcall` (Fast Call)
+#### Inputs
+- The **first two arguments** are placed in the `ECX` and `EDX` registers by the `caller`.
+- Any additional arguments are pushed onto the stack *right-to-left*.
+
+#### Processing
+- `Callee` uses `ECX` and `EDX` for the first two arguments directly.
+- Retrieves any further arguments from the stack.
+- Performs the function’s logic.
+- `Callee` cleans up the stack (if needed) before returning.
+
+#### Outputs
+- **Return value**: Placed in `EAX`.
+- **Stack cleanup**: Performed by the `callee` for the stack arguments.
+
+#### Example
+This example demonstrates how a function that **adds two numbers** is implemented and called using the `__fastcall` calling convention.
+
+**Callee:**
+
+The `callee` expects the first argument in `ECX` and the second in `EDX`. It adds them and returns the result in `EAX`. For two arguments, there's nothing to clean up on the stack.
+
+```asm
+ADD@8:
+    MOV EAX, ECX  ; First parameter (a)
+    ADD EAX, EDX  ; Second parameter (b)
+    RET           ; No stack cleanup is required for the two parameters in registers.
+
+```
+
+**Caller:**
+
+The `caller` moves the first argument into `ECX` and the second into `EDX`, then calls the function. Any more arguments would be pushed on the stack before the call.
+```asm
+MOV ECX, 2
+MOV EDX, 3
+; Push any_more_params_if_needed
+CALL ADD@8
+```
+
+### 4. `thiscall`
+
+#### Inputs
+- The `this` pointer (address of the object) is placed in `ECX` by the `caller`.
+- Other arguments are pushed onto the stack in *right-to-left* order.
+
+#### Processing
+- `Callee` uses `ECX` as the pointer to the object to access member variables.
+- Retrieves other arguments from the stack.
+- Performs the function’s logic.
+- `Caller` cleans up the stack after the call.
+
+#### Outputs
+- **Return value**: Placed in `EAX`.
+- **Stack cleanup**: Performed by the `caller`.
+
+
+#### Example
+This example demonstrates how a **C++ member function** that adds a member variable (`a`) to a parameter (`b`) is implemented and called using the `thiscall` calling convention.
+
+**C++:**
+```cpp
+class math {
+public:
+    int sum(int b) { return this->a + b; }
+};
+```
+
+**Callee:**
+
+The `callee` expects the `this` pointer in `ECX`, and the argument `b` on the stack. It accesses the member variable `a` via the `this` pointer, adds it to `b`, and returns the result in `EAX`.
+
+```assembly
+; ECX = Pointer to math object
+; [ESP+4] = b
+
+MATH_SUM:
+    MOV EAX, [ECX] ; (a) is at offset 0
+    ADD EAX, [ESP+4]
+    RET 4 4             ;Pop (b)
+```
+
+**Caller:**
+
+The `caller` sets up the `this` pointer in `ECX`, pushes the argument `b` on the stack, calls the method, and then cleans up the stack.
+```assembly
+MOV ECX, MATH_PTR    ; 'this' pointer
+PUSH 5               ; b
+CALL MATH_SUM
+ADD ESP, 4           ; Caller cleans up
+```
+
+## Practice
+Write a function that takes two arguments from the stack and returns the greater of the two in EAX.
