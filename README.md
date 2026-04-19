@@ -1,6 +1,12 @@
 # Assembly Language
 This repository is a comprehensive resource for learning and referencing x86 Assembly Language. It provides detailed content and examples on essential topics such as instructions, registers, flags, and control flow.
 
+## Objective
+
+By the end of this course, you will be able to,
+1. Understand the fundamentals of machine components.
+2. Understand the assembly language syntax. 
+3. Develop a program using assembly language.
 
 ## Table of Contents
 1. [Introduction to Assembly Language](https://github.com/SAFCSP-Team/assembly-language-bootcamp/blob/main/content/01.introduction-to-assembly.md)
